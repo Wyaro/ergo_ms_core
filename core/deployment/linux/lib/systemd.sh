@@ -59,7 +59,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/ergo_ms
-ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && api dev'
+ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && python -m commands dev'
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -96,10 +96,28 @@ Requires=ergo-api-dev.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/ergo_ms
-ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && api start_celery_beat'
+ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_beat.py'
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+)
+
+  MEDIA_API_UNIT=$(cat <<'UNIT'
+[Unit]
+Description=Ergo Media API (CDN / file server)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/default/ergo_ms
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && PYTHONPATH="$ERGO_ROOT/core/media_api/src" python -m media_server.manage runserver 0.0.0.0:8003'
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
@@ -114,7 +132,7 @@ After=network.target
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/ergo_ms
-ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && api start_ollama'
+ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && python -m commands start_ollama'
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -127,6 +145,7 @@ UNIT
   export API_UNIT
   export CLIENT_UNIT
   export CELERY_BEAT_UNIT
+  export MEDIA_API_UNIT
   export OLLAMA_UNIT
 }
 
@@ -143,7 +162,7 @@ Requires=ergo-api-dev.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/ergo_ms
-ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT/core" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && api start_celery_worker --worker=$worker_name'
+ExecStart=/bin/bash -lc 'cd "\$ERGO_ROOT/core" && . "\$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_worker.py --worker=$worker_name'
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
@@ -164,7 +183,7 @@ Requires=ergo-api-dev.service
 [Service]
 Type=simple
 EnvironmentFile=/etc/default/ergo_ms
-ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && api start_celery_worker'
+ExecStart=/bin/bash -lc 'cd "$ERGO_ROOT/core" && . "$ERGO_ROOT/virtual_env/python/bin/activate" && python api/scripts/start_celery_worker.py'
 Restart=always
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1

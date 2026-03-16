@@ -26,13 +26,38 @@ function Install-Service {
         Start-Sleep -Seconds 2
     }
 
-    $wrapperPath = New-ServiceWrapper -ServiceName $ServiceName -Root $Root
+    $corePath = Join-Path $Root "core"
+    $pythonExe = Join-Path $Root "virtual_env\python\Scripts\python.exe"
     $displayName = "Ergo MS - $ServiceName"
 
     Write-ColorOutput "-> Installing service: $ServiceName" Cyan
 
-    # Install service
-    & $NssmExe install $ServiceName $wrapperPath
+    $useDirectPython = $false
+    $appPath = $null
+    $appParams = $null
+
+    if ($ServiceName -eq 'ergo-celery-beat') {
+        # Используем общий скрипт запуска Beat, чтобы логика кэшей и логирование
+        # совпадали с ergoms start-beat / start_celery_beat.py
+        $useDirectPython = $true
+        $appPath = $pythonExe
+        $appParams = "api\scripts\start_celery_beat.py"
+    }
+    elseif ($ServiceName -match '^ergo-celery-worker-(.+)$') {
+        $useDirectPython = $true
+        $workerName = $Matches[1]
+        $appPath = $pythonExe
+        $appParams = "api\scripts\start_celery_worker.py --worker=$workerName"
+    }
+
+    if ($useDirectPython -and (Test-Path $pythonExe)) {
+        & $NssmExe install $ServiceName $appPath
+        & $NssmExe set $ServiceName AppParameters $appParams
+    }
+    else {
+        $wrapperPath = New-ServiceWrapper -ServiceName $ServiceName -Root $Root
+        & $NssmExe install $ServiceName $wrapperPath
+    }
     & $NssmExe set $ServiceName DisplayName $displayName
     & $NssmExe set $ServiceName Description "Ergo Management System - $ServiceName"
     & $NssmExe set $ServiceName AppDirectory (Join-Path $Root "core")
@@ -41,8 +66,8 @@ function Install-Service {
     $singleLog = Join-Path $logsDir "${ServiceName}.log"
     & $NssmExe set $ServiceName AppStdout $singleLog
     & $NssmExe set $ServiceName AppStderr $singleLog
-    # Ensure UTF-8 for Python output under Windows services
-    & $NssmExe set $ServiceName AppEnvironmentExtra "PYTHONIOENCODING=UTF-8" "PYTHONUTF8=1"
+    # Ensure UTF-8 and unbuffered output (fixes delayed/blocked logs in Celery)
+    & $NssmExe set $ServiceName AppEnvironmentExtra "PYTHONIOENCODING=UTF-8" "PYTHONUTF8=1" "PYTHONUNBUFFERED=1"
     
     # Set service to auto-start
     & $NssmExe set $ServiceName Start SERVICE_AUTO_START
@@ -265,15 +290,55 @@ function Show-ServiceLogs {
     
     if (-not (Test-Path $logPath)) {
         Write-ColorOutput "[ERROR] Log file not found: $logPath" Red
+        Write-ColorOutput "Logs are written when running as Windows services (ergoms install-services)." Gray
+        Write-ColorOutput "When using VS Code tasks, output goes to the terminal." Gray
         exit 1
     }
     
+    $fileInfo = Get-Item $logPath
+    $isEmpty = $fileInfo.Length -eq 0
     Write-ColorOutput "-> Showing last $Lines lines of $ServiceName logs..." Cyan
     Write-ColorOutput "   Log file: $logPath" Gray
+    if ($isEmpty) {
+        Write-ColorOutput "   Log file is empty." Yellow
+        Write-ColorOutput "   Hint: Logs are written when running as Windows services (ergoms install-services)." Gray
+        Write-ColorOutput "   When using VS Code tasks (Start All Services), output goes to the terminal." Gray
+        Write-ColorOutput ""
+        Write-ColorOutput "Waiting for new log entries (-f)... Press Ctrl+C to exit." Gray
+    }
     Write-ColorOutput ""
     
     # Read log as UTF-8 to display special symbols correctly in Windows PowerShell
     Get-Content -Path $logPath -Tail $Lines -Wait -Encoding UTF8
+}
+
+function Wait-ServiceStopped {
+    param(
+        [string]$ServiceName,
+        [int]$TimeoutSeconds = 30
+    )
+    
+    $startTime = Get-Date
+    $timeout = (Get-Date).AddSeconds($TimeoutSeconds)
+    
+    while ((Get-Date) -lt $timeout) {
+        $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+        if (-not $service) {
+            # Service doesn't exist anymore, consider it stopped
+            return $true
+        }
+        
+        $status = $service.Status
+        if ($status -eq 'Stopped') {
+            return $true
+        }
+        
+        # Wait a bit before checking again
+        Start-Sleep -Milliseconds 500
+    }
+    
+    # Timeout reached
+    return $false
 }
 
 function Uninstall-AllServices {
@@ -296,16 +361,30 @@ function Uninstall-AllServices {
         $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
         if ($service) {
             try {
-                if (Test-Path $nssmExe) {
-                    # Only stop service if it's running
-                    if ($service.Status -eq 'Running') {
-                        Write-ColorOutput "  Stopping service: $serviceName" Gray
-                        & $nssmExe stop $serviceName 2>$null
+                # Handle service stopping - check status and wait if needed
+                $currentStatus = $service.Status
+                if ($currentStatus -eq 'Running' -or $currentStatus -eq 'StartPending') {
+                    Write-ColorOutput "  Stopping service: $serviceName" Gray
+                    # Use Stop-Service which handles StopPending state better than nssm
+                    Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+                }
+                elseif ($currentStatus -eq 'StopPending') {
+                    Write-ColorOutput "  Service $serviceName is already stopping, waiting..." Gray
+                }
+                
+                # Wait for service to fully stop (if not already stopped)
+                if ($currentStatus -ne 'Stopped') {
+                    $stopped = Wait-ServiceStopped -ServiceName $serviceName -TimeoutSeconds 30
+                    if (-not $stopped) {
+                        Write-ColorOutput "  Warning: Service $serviceName did not stop within timeout, forcing..." Yellow
+                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
                         Start-Sleep -Seconds 2
                     }
-                    
-                    # Remove service
-                    Write-ColorOutput "  Removing service: $serviceName" Gray
+                }
+                
+                # Remove service
+                Write-ColorOutput "  Removing service: $serviceName" Gray
+                if (Test-Path $nssmExe) {
                     & $nssmExe remove $serviceName confirm 2>&1 | Out-Null
                     if ($LASTEXITCODE -ne 0) {
                         Write-ColorOutput "  NSSM removal failed, trying sc.exe..." Yellow
@@ -313,16 +392,9 @@ function Uninstall-AllServices {
                     }
                 }
                 else {
-                    # Only stop service if it's running
-                    if ($service.Status -eq 'Running') {
-                        Write-ColorOutput "  Stopping service: $serviceName" Gray
-                        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-                    }
-                    
-                    # Remove service using sc.exe if nssm not available
-                    Write-ColorOutput "  Removing service: $serviceName" Gray
                     sc.exe delete $serviceName 2>$null
                 }
+                
                 Write-ColorOutput "[OK] Removed: $serviceName" Green
             }
             catch {

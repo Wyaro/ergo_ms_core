@@ -43,33 +43,40 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Load modules
+# Lazy loading: загружаем только core и commands для быстрого выполнения обычных команд.
+# Тяжёлые модули (nssm, services, setup, cli, help) загружаются только при необходимости.
 $LibPath = Join-Path $PSScriptRoot "lib"
 . (Join-Path $LibPath "core.ps1")
-. (Join-Path $LibPath "nssm.ps1")
-. (Join-Path $LibPath "services.ps1")
-. (Join-Path $LibPath "setup.ps1")
-. (Join-Path $LibPath "cli.ps1")
 . (Join-Path $LibPath "commands.ps1")
-. (Join-Path $LibPath "help.ps1")
+
+$script:HeavyModulesLoaded = $false
+function Load-HeavyModules {
+    if ($script:HeavyModulesLoaded) { return }
+    . (Join-Path $LibPath "nssm.ps1")
+    . (Join-Path $LibPath "services.ps1")
+    . (Join-Path $LibPath "setup.ps1")
+    . (Join-Path $LibPath "cli.ps1")
+    . (Join-Path $LibPath "help.ps1")
+    $script:HeavyModulesLoaded = $true
+}
 
 # Main execution
 function Main {
     # Proxy commands that don't require admin
-    $proxyCommands = @('poetry', 'api', 'npm')
+    $proxyCommands = @('poetry', 'api', 'media_api', 'npm')
     $isProxyCommand = $proxyCommands -contains $Command.ToLower()
     
     # Commands that require admin
     $adminCommands = @(
         'install', 'install-services', 'install-api-service', 'install-client-service', 
-        'install-worker-service', 'install-beat-service', 
+        'install-worker-service', 'install-beat-service', 'install-media-service', 
         'start', 'stop', 'restart', 'status', 
         'uninstall-services', 'install-cli', 'uninstall-cli', 'setup-full'
     )
     $requiresAdmin = $adminCommands -contains $Command.ToLower()
     
     # Commands that don't require admin
-    $noAdminCommands = @('logs', 'help', 'clean', 'clean-project', 'update-submodules')
+    $noAdminCommands = @('logs', 'help', 'clean', 'update-submodules')
     
     # Check if it's a custom command
     $projectRoot = $null
@@ -94,6 +101,19 @@ function Main {
         exit 1
     }
 
+    # Handle built-in noAdminCommands before custom commands to avoid recursion
+    # (clean/update-submodules are in commands.conf but must run as built-in when invoked via win: ergo_ms.ps1)
+    if ($Command -in @('clean', 'update-submodules')) {
+        . Load-HeavyModules
+        $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
+        if ($Command -eq 'clean') {
+            Clear-ProjectDependencies -Root $projectRoot
+        } else {
+            Update-Submodules -Root $projectRoot
+        }
+        return
+    }
+
     # Handle custom commands (no admin required)
     if ($isCustomCommand) {
         Invoke-CustomCommand -CommandName $Command -CommandArgs $RemainingArgs -ProjectRoot $projectRoot
@@ -112,6 +132,10 @@ function Main {
                 Invoke-ApiCommand -CommandArgs $RemainingArgs -Root $projectRoot
                 return
             }
+            'media_api' {
+                Invoke-MediaApiCommand -CommandArgs $RemainingArgs -Root $projectRoot
+                return
+            }
             'npm' {
                 Invoke-NpmCommand -CommandArgs $RemainingArgs -Root $projectRoot
                 return
@@ -119,7 +143,18 @@ function Main {
         }
     }
 
-    # Handle service management commands
+    # Handle <module>:poetry commands (e.g., ergoms bi_analysis:poetry add requests ">=2.28.0")
+    if ($Command -match '^([a-zA-Z0-9_-]+):poetry$') {
+        $moduleName = $Matches[1]
+        $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
+        Invoke-ModulePoetryCommand -ModuleName $moduleName -CommandArgs $RemainingArgs -Root $projectRoot
+        return
+    }
+
+    # Service/admin/utility commands — загружаем тяжёлые модули
+    # Dot-source для сохранения определений функций в текущей области видимости
+    . Load-HeavyModules
+
     switch ($Command.ToLower()) {
         'install' {
             $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
@@ -170,6 +205,14 @@ function Main {
             Install-SingleService -ServiceName "ergo-celery-beat" -Root $projectRoot
             Start-Service -Name "ergo-celery-beat"
             Write-ColorOutput "`n[OK] Beat service installed and started!" Green
+            Show-ServicesStatus -ProjectRoot $projectRoot
+        }
+        'install-media-service' {
+            $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
+            Write-ColorOutput "-> Installing Media API service for: $projectRoot" Cyan
+            Install-SingleService -ServiceName "ergo-media-api" -Root $projectRoot
+            Start-Service -Name "ergo-media-api"
+            Write-ColorOutput "`n[OK] Media API service installed and started!" Green
             Show-ServicesStatus -ProjectRoot $projectRoot
         }
         'install-ollama-service' {
@@ -256,6 +299,10 @@ function Main {
             
             $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
             $serviceNames = Get-ServiceNames -ProjectRoot $projectRoot
+            $serviceName = switch ($serviceName) {
+                'media_api' { 'ergo-media-api' }
+                default { $serviceName }
+            }
             if ($serviceNames -notcontains $serviceName) {
                 Write-ColorOutput "[ERROR] Unknown service: $serviceName" Red
                 Write-ColorOutput "Available services: $($serviceNames -join ', ')" Yellow
@@ -269,10 +316,6 @@ function Main {
             Setup-FullSystem -Root $projectRoot -RecreateVenv $RecreateVenv
         }
         'clean' {
-            $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
-            Clear-ProjectDependencies -Root $projectRoot
-        }
-        'clean-project' {
             $projectRoot = Get-ProjectRoot -ProvidedRoot $Root
             Clear-ProjectDependencies -Root $projectRoot
         }

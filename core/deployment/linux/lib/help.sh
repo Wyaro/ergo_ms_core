@@ -29,6 +29,7 @@ Service Management Commands:
   install-client-service  Install and start Client service only
   install-worker-service  Install and start all Worker services from celery_workers.yaml
   install-beat-service    Install and start Beat service only
+  install-media-service   Install and start Media API service only
   start      Start all services (including all workers from config)
   stop       Stop all services (including all workers from config)
   restart    Restart all services (including all workers from config)
@@ -39,7 +40,7 @@ Service Management Commands:
   logs       Show logs for a service (usage: logs <service-name> [lines])
   setup-full     Full system setup (git, venv, poetry, npm) - no services
   update-submodules Update all git submodules and switch to dev branch
-  clean-project  Clean all dependencies (node_modules, venv, static) - keep media
+  clean          Clean all dependencies (node_modules, venv, static) - keep media
 
 Deployment Commands (no root required):
   deploy-api     Deploy API only (install deps, migrate, collect static)
@@ -49,9 +50,10 @@ Deployment Commands (no root required):
   deploy-all     Deploy all components (API + Client)
 
 Proxy Commands (automatically forward to respective tools):
-  poetry <args>  Forward to poetry command
-  api <args>     Forward to api command
-  npm <args>     Forward to npm command
+  poetry <args>     Forward to poetry command
+  api <args>        Forward to api command (Django manage.py)
+  media_api <args>  Forward to media_api command (Media API manage.py)
+  npm <args>        Forward to npm command
 
 USAGE
 
@@ -59,10 +61,9 @@ USAGE
     echo "Custom Commands:"
     echo ""
     
-    # Separate core and module commands
     declare -A core_cmds
     declare -A module_cmds
-    
+
     for cmd in "${!custom_cmds[@]}"; do
       if [[ "$cmd" == *:* ]]; then
         module_cmds["$cmd"]="${custom_cmds[$cmd]}"
@@ -70,7 +71,7 @@ USAGE
         core_cmds["$cmd"]="${custom_cmds[$cmd]}"
       fi
     done
-    
+
     if [[ ${#core_cmds[@]} -gt 0 ]]; then
       echo "  Core Commands (defined in commands.conf):"
       for cmd in $(echo "${!core_cmds[@]}" | tr ' ' '\n' | sort); do
@@ -84,16 +85,27 @@ USAGE
       echo ""
     fi
     
-    if [[ ${#module_cmds[@]} -gt 0 ]]; then
+    set +u
+    local module_count=0
+    for _ in "${!module_cmds[@]}"; do
+      ((module_count++)) || true
+    done
+    set -u
+    if [[ "$module_count" -gt 0 ]]; then
       echo "  Module Commands (defined in modules/*/ergoms.conf):"
-      for cmd in $(echo "${!module_cmds[@]}" | tr ' ' '\n' | sort); do
+      local module_keys_list
+      set +u
+      module_keys_list=$(printf '%s\n' "${!module_cmds[@]}" | sort) || true
+      set -u
+      while IFS= read -r cmd; do
+        [[ -z "$cmd" ]] && continue
         local def="${module_cmds[$cmd]}"
         # Truncate long definitions
         if [[ ${#def} -gt 60 ]]; then
           def="${def:0:57}..."
         fi
         printf "    %-30s -> %s\n" "$cmd" "$def"
-      done
+      done <<< "$module_keys_list"
       echo ""
     fi
   fi

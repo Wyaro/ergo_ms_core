@@ -2,21 +2,17 @@
   "name": "ergo-ms-multi-terminal",
   "displayName": "ERGO MS Multi-Terminal",
   "description": "Запуск нескольких терминалов из одной задачи. Поддерживает статические списки и динамическое чтение из YAML/JSON.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "ergo-ms",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.75.0"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onTaskType:multi-terminal",
-    "onCommand:workbench.action.tasks.runTask",
-    "onCommand:ergo-ms-multi-terminal.run",
-    "onCommand:ergo-ms-multi-terminal.runFromFile",
-    "onCommand:ergo-ms-multi-terminal.stopAll"
+    "onTaskType:multi-terminal"
   ],
   "main": "./extension.js",
   "contributes": {

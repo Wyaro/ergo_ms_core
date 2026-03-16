@@ -5,17 +5,13 @@ description = "Ergo MS API"
 authors = ["Eugene Sergeevich Muzalevsky <muzalevskij.evgenij@mail.ru>"]
 packages = [
     {include = "src", from = "core/api"},
+    {include = "media_server", from = "core/media_api/src"},
     {include = "modules", from = ""},
     {include = "commands", from = "core/api"},
     {include = "rest_framework", from = "core/django_rest_framework"},
     {include = "django", from = "core/django"},
     {include = ".cursor", from = ""},
 ]
-
-[[tool.poetry.source]]
-name = "pytorch-cu128"
-url = "https://download.pytorch.org/whl/cu128"
-priority = "explicit"
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
@@ -30,12 +26,8 @@ setuptools = ">=80.9.0"
 wheel = ">=0.45.1"
 daphne = ">=4.2.1"
 whitenoise = ">=6.9.0"
-psycopg2 = ">=2.9.10"
 psutil = ">=7.0.0"
-transformers = ">=4.53.2"
 django-environ = ">=0.12.0"
-matplotlib = ">=3.10.3"
-scikit-learn = ">=1.7.0"
 pyyaml = ">=6.0.2"
 sqlalchemy = ">=2.0.41"
 sshtunnel = ">=0.4.0"
@@ -43,57 +35,25 @@ pyodbc = ">=5.2.0"
 mysql-connector-python = ">=9.3.0"
 celery = ">=5.5.3"
 flower = ">=2.0.1"
-mysqlclient = ">=2.2.7"
 django-celery-beat = ">=2.8.1"
 channels = ">=4.2.2"
 ipykernel = ">=6.29.5"
-torch = {version = "==2.7.1+cu128", source = "pytorch-cu128"}
-tensorflow = ">=2.19.0"
-pymssql = ">=2.3.7"
-clickhouse-connect = ">=0.8.18"
-openpyxl = ">=3.1.5"
-django-filter = ">=25.1"
-yfinance = ">=0.2.65"
-feedparser = ">=6.0.11"
-python-slugify = ">=8.0.4"
-faker = ">=37.4.2"
-opencv-python = ">=4.12.0.88"
-scikit-image = ">=0.25.2"
-reportlab = ">=4.4.2,<5.0.0"
-xlsxwriter = ">=3.2.5,<4.0.0"
-docx = ">=0.2.4,<0.3.0"
-python-docx = ">=1.2.0,<2.0.0"
-unoconv = ">=0.9.0,<1.0.0"
-ollama = ">=0.5.1,<0.6.0"
-vosk = ">=0.3.45,<0.4.0"
-moviepy = "==1.0.3"
-sentencepiece = ">=0.2.0,<0.3.0"
-sacremoses = ">=0.1.1,<0.2.0"
-django-extensions = ">=4.1,<5.0"
 notebook = ">=7.4.4,<8.0.0"
 jupyterlab = ">=4.4.5,<5.0.0"
+django-filter = ">=25.1"
+django-extensions = ">=4.1,<5.0"
 requests = ">=2.31.0,<3.0.0"
-torchvision = {version = "==0.22.1+cu128", source = "pytorch-cu128"}
-torchaudio = {version = "==2.7.1+cu128", source = "pytorch-cu128"}
-silero = ">=0.4.1,<0.5.0"
-soundfile = ">=0.13.1,<0.14.0"
-pydub = ">=0.25.1,<0.26.0"
-accelerate = ">=1.10.1,<2.0.0"
-duckdb = ">=1.4.1,<2.0.0"
 sqlparse = ">=0.5.3,<0.6.0"
-llama-index-llms-ollama = ">=0.9.0,<0.10.0"
 mcp = "^1.20.0"
 httpx = ">=0.27.0,<1.0.0"
-polars = "^1.35.2"
-fastexcel = "^0.17.2"
-pyarrow = "^22.0.0"
-sympy = "^1.14.0"
-pypdf2 = "^3.0.1"
-pdfplumber = "^0.11.8"
-docx2pdf = "^0.1.8"
+cryptography = "^46.0.3"
+psycopg2-binary = "^2.9.11"
+python-slugify = "^8.0.4"
+pillow = "^12.1.1"
 
 [tool.poetry.scripts]
 api = "commands.__main__:main"
+media_api = "media_server.manage:main"
 
 [build-system]
 requires = ["poetry-core>=2.1.3"]

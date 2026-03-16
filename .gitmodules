@@ -51,13 +51,6 @@
 	update = merge
 	ignore = all
 
-[submodule "education_expert_system"]
-	path = modules/education_expert_system
-	url = https://github.com/SKB-AI/ergo_ms_education_expert_system.git
-	branch = dev
-	update = merge
-	ignore = all
-
 [submodule "lms"]
 	path = modules/lms
 	url = https://github.com/SKB-AI/ergo_ms_lms.git
@@ -112,7 +105,7 @@
 	url = https://github.com/SKB-AI/ergo_ms_vacancies_parser.git
 	branch = dev
 	update = merge
-	ignore = all
+	ignore = all	
 	
 [submodule "education_materials_parser"]
 	path = modules/education_materials_parser
@@ -156,23 +149,79 @@
 	update = merge
 	ignore = all
 
+[submodule "modules/competence_core"]
+	path = modules/competence_core
+	url = https://github.com/Wyaro/ergo_ms_competence_core
+	branch = dev
+	update = merge
+	ignore = all
+
 [submodule "modules/projects"]
 	path = modules/projects
 	url = https://github.com/SKB-AI/ergo_ms_projects.git
 	branch = dev
 	update = merge
 	ignore = all
-
+	
 [submodule "modules/tasks"]
 	path = modules/tasks
 	url = https://github.com/SKB-AI/ergo_ms_tasks.git
 	branch = dev
 	update = merge
 	ignore = all
-	
-[submodule "modules/competence_core"]
-	path = modules/competence_core
-	url = https://github.com/Wyaro/ergo_ms_competence_core
+
+[submodule "neural_networks_hub"]
+	path = modules/neural_networks_hub
+	url = https://github.com/SKB-AI/ergo_ms_neural_networks_hub.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "technical_process_analysis"]
+	path = modules/technical_process_analysis
+	url = https://github.com/SKB-AI/ergo_ms_technical_process_analysis.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/ollama_framework"]
+	path = modules/ollama_framework
+	url = https://github.com/SKB-AI/ergo_ms_ollama_framework.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/ai_assistant"]
+	path = modules/ai_assistant
+	url = https://github.com/SKB-AI/ergo_ms_ai_assistant.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/lcp"]
+	path = modules/lcp
+	url = https://github.com/SKB-AI/ergo_ms_lcp.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/cms_shortcodes"]
+	path = modules/cms_shortcodes
+	url = https://github.com/SKB-AI/ergo_ms_cms_shortcodes.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/bi_analysis"]
+	path = modules/bi_analysis
+	url = https://github.com/SKB-AI/ergo_ms_bi_analysis.git
+	branch = dev
+	update = merge
+	ignore = all
+
+[submodule "modules/bi_analysis_modern"]
+	path = modules/bi_analysis_modern
+	url = https://github.com/SKB-AI/ergo_ms_bi_analysis_modern.git
 	branch = dev
 	update = merge
 	ignore = all

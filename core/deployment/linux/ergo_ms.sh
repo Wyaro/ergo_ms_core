@@ -53,8 +53,10 @@ main() {
   if (( $# > 0 )); then
     command="$1"
     case "$command" in
-      install|install-services|install-api-service|install-client-service|install-worker-service|install-beat-service|install-ollama-service|start|stop|restart|status|uninstall-services|install-cli|uninstall-cli|logs|setup-full|update-submodules|clean|clean-project|poetry|api|npm)
+      install|install-services|install-api-service|install-client-service|install-worker-service|install-beat-service|install-media-service|install-ollama-service|start|stop|restart|status|uninstall-services|install-cli|uninstall-cli|logs|setup-full|update-submodules|clean|poetry|api|media_api|npm)
         shift ;;
+      *:poetry)
+        shift ;;  # module:poetry command, handled below
       -h|--help)
         print_usage "$detected_root"; exit 0 ;;
       *)
@@ -76,10 +78,18 @@ main() {
     exit 0
   fi
 
+  # Check if it's a <module>:poetry command (doesn't require root)
+  local is_module_poetry_command=false
+  local module_poetry_name=""
+  if [[ "$command" =~ ^([a-zA-Z0-9_-]+):poetry$ ]]; then
+    is_module_poetry_command=true
+    module_poetry_name="${BASH_REMATCH[1]}"
+  fi
+
   # Check if it's a proxy command (doesn't require root)
   local is_proxy_command=false
   case "$command" in
-    poetry|api|npm)
+    poetry|api|media_api|npm)
       is_proxy_command=true ;;
   esac
   
@@ -90,8 +100,10 @@ main() {
   fi
   
   # Check if it's a custom command (doesn't require root)
+  # Exclude built-in commands to avoid recursion (e.g. install-cli would re-invoke self via commands.conf)
+  local builtin_override="install-cli|uninstall-cli|install|install-services|install-api-service|install-client-service|install-worker-service|install-beat-service|install-media-service|install-ollama-service|start|stop|restart|status|uninstall-services|setup-full"
   local is_custom_command=false
-  if [[ -v "available_custom_cmds[$command]" ]]; then
+  if [[ -v "available_custom_cmds[$command]" ]] && [[ ! "$command" =~ ^($builtin_override)$ ]]; then
     is_custom_command=true
   fi
   
@@ -104,7 +116,7 @@ main() {
   
   # Check if it's a clean command (doesn't require root)
   local is_clean_command=false
-  if [[ "$command" == "clean" ]] || [[ "$command" == "clean-project" ]]; then
+  if [[ "$command" == "clean" ]]; then
     is_clean_command=true
   fi
 
@@ -115,7 +127,7 @@ main() {
   fi
 
   # Parse flags/positional root for proxy, custom, logs, deploy, clean, and update-submodules commands
-  if [[ "$is_proxy_command" == true ]] || [[ "$is_custom_command" == true ]] || [[ "$is_logs_command" == true ]] || [[ "$is_deploy_command" == true ]] || [[ "$is_clean_command" == true ]] || [[ "$is_update_submodules_command" == true ]]; then
+  if [[ "$is_proxy_command" == true ]] || [[ "$is_module_poetry_command" == true ]] || [[ "$is_custom_command" == true ]] || [[ "$is_logs_command" == true ]] || [[ "$is_deploy_command" == true ]] || [[ "$is_clean_command" == true ]] || [[ "$is_update_submodules_command" == true ]]; then
     while (( "$#" )); do
       case "$1" in
         --root)
@@ -141,6 +153,16 @@ main() {
       ERGO_ROOT="$(detect_project_root)"
     fi
     
+    # Execute clean and update-submodules as built-in first (avoid recursion via commands.conf)
+    if [[ "$is_clean_command" == true ]]; then
+      clear_project_dependencies "$ERGO_ROOT"
+      exit 0
+    fi
+    if [[ "$is_update_submodules_command" == true ]]; then
+      update_submodules "$ERGO_ROOT"
+      exit 0
+    fi
+
     # Execute custom command
     if [[ "$is_custom_command" == true ]]; then
       invoke_custom_command "$ERGO_ROOT" "$command" "$@"
@@ -150,18 +172,6 @@ main() {
     # Execute deploy command
     if [[ "$is_deploy_command" == true ]]; then
       invoke_custom_command "$ERGO_ROOT" "$command" "$@"
-      exit 0
-    fi
-    
-    # Execute clean command
-    if [[ "$is_clean_command" == true ]]; then
-      clear_project_dependencies "$ERGO_ROOT"
-      exit 0
-    fi
-
-    # Execute update-submodules command
-    if [[ "$is_update_submodules_command" == true ]]; then
-      update_submodules "$ERGO_ROOT"
       exit 0
     fi
     
@@ -175,6 +185,7 @@ main() {
       fi
       
       local service_name="$1"
+      [[ "$service_name" == "media_api" ]] && service_name="ergo-media-api"
       local lines="${2:-500}"
       
       # Check if service exists
@@ -197,11 +208,18 @@ main() {
       exit 0
     fi
     
+    # Execute <module>:poetry command
+    if [[ "$is_module_poetry_command" == true ]]; then
+      invoke_module_poetry_command "$ERGO_ROOT" "$module_poetry_name" "$@"
+      exit 0
+    fi
+
     # Execute proxy command
     case "$command" in
-      poetry) invoke_poetry_command "$ERGO_ROOT" "$@" ;;
-      api)    invoke_api_command "$ERGO_ROOT" "$@" ;;
-      npm)    invoke_npm_command "$ERGO_ROOT" "$@" ;;
+      poetry)    invoke_poetry_command "$ERGO_ROOT" "$@" ;;
+      api)       invoke_api_command "$ERGO_ROOT" "$@" ;;
+      media_api) invoke_media_api_command "$ERGO_ROOT" "$@" ;;
+      npm)       invoke_npm_command "$ERGO_ROOT" "$@" ;;
     esac
     exit 0
   fi
@@ -266,6 +284,7 @@ main() {
     install-client-service)  ;; # Continue to install flow
     install-worker-service)  ;; # Continue to install flow
     install-beat-service)  ;; # Continue to install flow
+    install-media-service)  ;; # Continue to install flow
     install-ollama-service)  ;; # Continue to install flow
     *)        echo "Unknown command: $command" >&2; print_usage "$detected_root"; exit 1 ;;
   esac
@@ -295,6 +314,9 @@ main() {
     install-beat-service)
       install_single_service "beat" "$ERGO_ROOT"
       ;;
+    install-media-service)
+      install_single_service "media" "$ERGO_ROOT"
+      ;;
     install-ollama-service)
       install_single_service "ollama" "$ERGO_ROOT"
       ;;
@@ -307,6 +329,7 @@ main() {
       # Устанавливаем базовые службы
       install_unit "ergo-api-dev"        "$API_UNIT"
       install_unit "ergo-client-dev"     "$CLIENT_UNIT"
+      install_unit "ergo-media-api"      "$MEDIA_API_UNIT"
       install_unit "ergo-celery-beat"    "$CELERY_BEAT_UNIT"
       install_unit "ergo-ollama"         "$OLLAMA_UNIT"
       
@@ -318,6 +341,7 @@ main() {
       # Включаем и запускаем базовые службы
       enable_and_start ergo-api-dev.service
       enable_and_start ergo-client-dev.service
+      enable_and_start ergo-media-api.service
       enable_and_start ergo-celery-beat.service
       enable_and_start ergo-ollama.service
       

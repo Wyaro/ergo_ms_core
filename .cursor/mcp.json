@@ -9,24 +9,24 @@
             ]
         },
         "ergo-database-postgres": {
-            "command": "python",
+            "command": "node",
             "args": [
-                ".cursor/mcp_python_wrapper.py",
+                ".cursor/mcp_launcher.js",
                 ".cursor/mcp_database_wrapper.py",
                 "default"
             ]
         },
         "ergo-api": {
-            "command": "python",
+            "command": "node",
             "args": [
-                ".cursor/mcp_python_wrapper.py",
+                ".cursor/mcp_launcher.js",
                 ".cursor/mcp_api_server.py"
             ]
         },
         "ergo_ollama": {
-            "command": "python",
+            "command": "node",
             "args": [
-                ".cursor/mcp_python_wrapper.py",
+                ".cursor/mcp_launcher.js",
                 ".cursor/mcp_ollama_server.py"
             ]
         }

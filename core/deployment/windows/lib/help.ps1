@@ -31,6 +31,7 @@ Service Management Commands:
     install-client-service  Install and start Client service only
     install-worker-service  Install and start all Worker services from celery_workers.yaml
     install-beat-service    Install and start Beat service only
+    install-media-service   Install and start Media API service only
     start          Start all services (including all workers from config)
     stop           Stop all services (including all workers from config)
     restart        Restart all services (including all workers from config)
@@ -40,7 +41,7 @@ Service Management Commands:
     uninstall-cli  Remove CLI wrapper
     logs           Show logs for a service (usage: logs <service-name> [lines])
     setup-full     Full system setup (git, venv, poetry, npm) - no services
-    clean-project  Clean all dependencies (node_modules, venv, static) - keep media
+    clean          Clean all dependencies (node_modules, venv, static) - keep media
     update-submodules Update all git submodules and switch to dev branch
     help           Show this help
 
@@ -52,9 +53,10 @@ Deployment Commands (no admin required):
     deploy-all     Deploy all components (API + Client)
 
 Proxy Commands (automatically forward to respective tools):
-    poetry <args>  Forward to poetry command
-    api <args>     Forward to api command
-    npm <args>     Forward to npm command
+    poetry <args>     Forward to poetry command
+    api <args>        Forward to api command (Django manage.py)
+    media_api <args>  Forward to media_api command (Media API manage.py)
+    npm <args>        Forward to npm command
 
 "@
 
@@ -128,6 +130,7 @@ Examples:
         .\ergo_ms.ps1 install-client-service
         .\ergo_ms.ps1 install-worker-service
         .\ergo_ms.ps1 install-beat-service
+        .\ergo_ms.ps1 install-media-service
         .\ergo_ms.ps1 install -Root "C:\projects\ergo_ms"
         .\ergo_ms.ps1 status
         .\ergo_ms.ps1 uninstall-services -Purge

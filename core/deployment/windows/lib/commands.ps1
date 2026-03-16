@@ -1,4 +1,4 @@
-# Custom commands management
+﻿# Custom commands management
 # Управление пользовательскими командами
 
 function Get-CustomCommands {
@@ -95,8 +95,11 @@ function Execute-CommandString {
         [string[]]$UserArgs
     )
     
-    # Parse command type (poetry:, api:, npm:, shell:, win:, linux:)
-    if ($CommandString -match '^(poetry|api|npm|shell|win|linux):(.+)$') {
+    # Mark as internal so wrappers in init_terminal.ps1 pass through
+    $env:ERGOMS_INTERNAL = '1'
+    
+    # Parse command type (poetry:, api:, media_api:, npm:, shell:, win:, linux:)
+    if ($CommandString -match '^(poetry|api|media_api|npm|shell|win|linux):(.+)$') {
         $cmdType = $matches[1]
         $cmdArgs = $matches[2].Trim()
         
@@ -112,7 +115,7 @@ function Execute-CommandString {
             'poetry' {
                 Push-Location $ProjectRoot
                 try {
-                    & poetry $allArgs
+                    & poetry @allArgs
                 }
                 finally {
                     Pop-Location
@@ -120,17 +123,37 @@ function Execute-CommandString {
             }
             'api' {
                 $venvPath = Join-Path $ProjectRoot "virtual_env\python"
-                if (-not (Test-Path $venvPath)) {
+                $pythonExe = Join-Path $venvPath "Scripts\python.exe"
+                if (-not (Test-Path $pythonExe)) {
                     Write-ColorOutput "[ERROR] Virtual environment not found" Red
                     exit 1
                 }
-                Push-Location (Join-Path $ProjectRoot "core")
+                Push-Location (Join-Path $ProjectRoot "core\api")
                 try {
-                    # Activate virtual environment
                     $env:VIRTUAL_ENV = $venvPath
                     $env:PATH = "$venvPath\Scripts;$env:PATH"
-                    
-                    & api $allArgs
+                    $env:PYTHONPATH = $ProjectRoot
+                    $env:PYTHONIOENCODING = "utf-8"
+                    $env:PYTHONUNBUFFERED = "1"
+                    & $pythonExe -m commands @allArgs
+                }
+                finally {
+                    Pop-Location
+                }
+            }
+            'media_api' {
+                $venvPath = Join-Path $ProjectRoot "virtual_env\python"
+                $pythonExe = Join-Path $venvPath "Scripts\python.exe"
+                if (-not (Test-Path $pythonExe)) {
+                    Write-ColorOutput "[ERROR] Virtual environment not found" Red
+                    exit 1
+                }
+                Push-Location $ProjectRoot
+                try {
+                    $env:VIRTUAL_ENV = $venvPath
+                    $env:PATH = "$venvPath\Scripts;$env:PATH"
+                    $env:PYTHONPATH = Join-Path $ProjectRoot "core\media_api\src"
+                    & $pythonExe -m media_server.manage @allArgs
                 }
                 finally {
                     Pop-Location
@@ -139,24 +162,15 @@ function Execute-CommandString {
             'npm' {
                 Push-Location $ProjectRoot
                 try {
-                    # Check if npm is available
-                    & npm --version 2>&1 | Out-Null
-                    if ($LASTEXITCODE -ne 0) {
-                        Write-ColorOutput "[ERROR] npm is not available or not working" Red
-                        Write-ColorOutput "  Please install Node.js and npm" Yellow
-                        exit 1
-                    }
-                    
-                    # Check if package.json exists
                     if (-not (Test-Path "package.json")) {
                         Write-ColorOutput "[ERROR] package.json not found in project root" Red
                         Write-ColorOutput "  Current directory: $(Get-Location)" Gray
                         exit 1
                     }
-                    
-                    # For npm commands, pass arguments correctly
-                    $npmCommand = "npm " + ($allArgs -join ' ')
-                    Invoke-Expression $npmCommand
+                    # Use cmd /c to avoid PowerShell argument passing issues with npm.cmd on Windows
+                    # (direct invocation can cause "run" to become "pm" -> "Unknown command: 'pm'")
+                    $npmCmdLine = "npm " + ($allArgs -join ' ')
+                    & cmd /c $npmCmdLine
                 }
                 finally {
                     Pop-Location
@@ -165,7 +179,6 @@ function Execute-CommandString {
             'shell' {
                 Push-Location $ProjectRoot
                 try {
-                    # Execute shell command as-is
                     $fullCommand = $cmdArgs
                     if ($UserArgs.Count -gt 0) {
                         $fullCommand += " " + ($UserArgs -join ' ')
@@ -179,7 +192,6 @@ function Execute-CommandString {
             'win' {
                 Push-Location $ProjectRoot
                 try {
-                    # Execute Windows-specific command
                     $fullCommand = $cmdArgs
                     if ($UserArgs.Count -gt 0) {
                         $fullCommand += " " + ($UserArgs -join ' ')
@@ -207,10 +219,67 @@ function Execute-CommandString {
     }
 }
 
+function Invoke-ModulePoetryCommand {
+    param([string]$ModuleName, [string[]]$CommandArgs, [string]$Root)
+
+    $env:ERGOMS_INTERNAL = '1'
+
+    if ($CommandArgs.Count -eq 0) {
+        Write-ColorOutput "Usage:" Yellow
+        Write-ColorOutput "  ergoms ${ModuleName}:poetry add PACKAGE              -- add dep (version auto-resolved)" Yellow
+        Write-ColorOutput "  ergoms ${ModuleName}:poetry add PACKAGE `">=1.0.0`"  -- add with explicit constraint" Yellow
+        Write-ColorOutput "  ergoms ${ModuleName}:poetry remove PACKAGE           -- remove dep" Yellow
+        Write-ColorOutput "  ergoms ${ModuleName}:poetry list                     -- list module deps" Yellow
+        return
+    }
+
+    $subCmd = $CommandArgs[0].ToLower()
+    $restArgs = if ($CommandArgs.Count -gt 1) { $CommandArgs[1..($CommandArgs.Count - 1)] } else { @() }
+
+    switch ($subCmd) {
+        'add' {
+            if ($restArgs.Count -eq 0) {
+                Write-ColorOutput "[ERROR] Package name required: ergoms ${ModuleName}:poetry add PACKAGE" Red
+                return
+            }
+            Invoke-ApiCommand -CommandArgs (@('module-add', $ModuleName) + $restArgs) -Root $Root
+        }
+        'remove' {
+            if ($restArgs.Count -eq 0) {
+                Write-ColorOutput "[ERROR] Package name required: ergoms ${ModuleName}:poetry remove PACKAGE" Red
+                return
+            }
+            Invoke-ApiCommand -CommandArgs (@('module-remove', $ModuleName) + $restArgs) -Root $Root
+        }
+        { $_ -in 'list', 'show' } {
+            Invoke-ApiCommand -CommandArgs @('module-list', $ModuleName) -Root $Root
+        }
+        default {
+            Write-ColorOutput "[ERROR] Неизвестная подкоманда: $subCmd" Red
+            Write-ColorOutput "Доступные: add, remove, list" Yellow
+        }
+    }
+}
+
 function Invoke-PoetryCommand {
     param([string[]]$CommandArgs, [string]$Root)
     
-    # Activate virtual environment if it exists
+    $env:ERGOMS_INTERNAL = '1'
+
+    # Перехватываем "poetry install [...]" и заменяем собственной реализацией,
+    # которая устанавливает ядро + зависимости всех модулей.
+    # Остальные poetry-подкоманды выполняются напрямую.
+    if ($CommandArgs.Count -gt 0 -and $CommandArgs[0] -eq 'install') {
+        $extraArgs = if ($CommandArgs.Count -gt 1) { $CommandArgs[1..($CommandArgs.Count - 1)] } else { @() }
+        Invoke-ApiCommand -CommandArgs (@('install') + $extraArgs) -Root $Root
+        return
+    }
+
+    if ($CommandArgs.Count -gt 0 -and $CommandArgs[0] -eq 'list') {
+        Invoke-ApiCommand -CommandArgs @('module-list') -Root $Root
+        return
+    }
+    
     $venvPath = Join-Path $Root "virtual_env\python"
     if (Test-Path $venvPath) {
         $env:VIRTUAL_ENV = $venvPath
@@ -229,21 +298,50 @@ function Invoke-PoetryCommand {
 function Invoke-ApiCommand {
     param([string[]]$CommandArgs, [string]$Root)
     
+    $env:ERGOMS_INTERNAL = '1'
+    
     $venvPath = Join-Path $Root "virtual_env\python"
     
-    if (-not (Test-Path $venvPath)) {
+    $pythonExe = Join-Path $venvPath "Scripts\python.exe"
+    if (-not (Test-Path $pythonExe)) {
         Write-ColorOutput "[ERROR] Virtual environment not found at: $venvPath" Red
-        Write-ColorOutput "  Please run 'poetry install' first" Yellow
+        Write-ColorOutput "  Please run 'ergoms python-install' first" Yellow
         exit 1
     }
     
-    Push-Location (Join-Path $Root "core")
+    Push-Location (Join-Path $Root "core\api")
     try {
-        # Activate virtual environment
         $env:VIRTUAL_ENV = $venvPath
         $env:PATH = "$venvPath\Scripts;$env:PATH"
-        
-        & api $CommandArgs
+        $env:PYTHONPATH = $Root
+        $env:PYTHONIOENCODING = "utf-8"
+        $env:PYTHONUNBUFFERED = "1"
+        & $pythonExe -m commands $CommandArgs
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Invoke-MediaApiCommand {
+    param([string[]]$CommandArgs, [string]$Root)
+    
+    $env:ERGOMS_INTERNAL = '1'
+    
+    $venvPath = Join-Path $Root "virtual_env\python"
+    $pythonExe = Join-Path $venvPath "Scripts\python.exe"
+    if (-not (Test-Path $pythonExe)) {
+        Write-ColorOutput "[ERROR] Virtual environment not found at: $venvPath" Red
+        Write-ColorOutput "  Please run 'ergoms python-install' first" Yellow
+        exit 1
+    }
+    
+    Push-Location $Root
+    try {
+        $env:VIRTUAL_ENV = $venvPath
+        $env:PATH = "$venvPath\Scripts;$env:PATH"
+        $env:PYTHONPATH = Join-Path $Root "core\media_api\src"
+        & $pythonExe -m media_server.manage $CommandArgs
     }
     finally {
         Pop-Location
@@ -253,10 +351,13 @@ function Invoke-ApiCommand {
 function Invoke-NpmCommand {
     param([string[]]$CommandArgs, [string]$Root)
     
+    $env:ERGOMS_INTERNAL = '1'
+    
     Push-Location $Root
     try {
-        $npmCommand = "npm " + ($CommandArgs -join ' ')
-        Invoke-Expression $npmCommand
+        # Use cmd /c to avoid PowerShell argument passing issues with npm.cmd on Windows
+        $npmCmdLine = "npm " + ($CommandArgs -join ' ')
+        & cmd /c $npmCmdLine
     }
     finally {
         Pop-Location
@@ -264,4 +365,3 @@ function Invoke-NpmCommand {
 }
 
 # Export-ModuleMember -Function *  # Удалено, так как это не модуль
-
